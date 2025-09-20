@@ -71,7 +71,10 @@ sudo certbot renew --dry-run
 ``` bash
 sudo ufw allow 80
 sudo ufw allow 443
+sudo ufw allow 22 // ssh
+sudo ufw enable
 sudo ufw reload
+
 ```
 
 ------------------------------------------------------------------------
