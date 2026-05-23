@@ -1,12 +1,12 @@
-# Environment Variables Guide
+# Environment Variables
 
-Managing secrets and environment variables in production.
+Environment variables store secrets and settings your app needs — database passwords, API keys, etc. They're kept separate from your code so you don't accidentally commit them to GitHub.
 
 ---
 
-## 1. Using .env Files
+## The .env File
 
-### Create .env
+Create a `.env` file in your app folder:
 
 ```bash
 nano /var/www/myapp/.env
@@ -15,46 +15,62 @@ nano /var/www/myapp/.env
 ```env
 NODE_ENV=production
 PORT=3000
-DATABASE_URL=mongodb://localhost:27017/myapp
-JWT_SECRET=your-super-secret-key
-API_KEY=abc123
+DATABASE_URL=mongodb://appuser:password@localhost:27017/myapp
+JWT_SECRET=a-very-long-random-secret-string
+API_KEY=your-api-key-here
 ```
 
-### Secure Permissions
-
+**Important — secure it immediately:**
 ```bash
-chmod 600 .env
-chown deployer:deployer .env
+chmod 600 /var/www/myapp/.env
 ```
+
+This makes it only readable by you, not other users on the server.
 
 ---
 
-## 2. Node.js
+## Make Sure .env Is Not in Git
 
-### Using dotenv
+Add it to `.gitignore` in your project:
 
+```bash
+echo ".env" >> .gitignore
+echo ".env.production" >> .gitignore
+echo ".env.local" >> .gitignore
+```
+
+> Never commit `.env` files to GitHub. Secrets in git history can be found even after deletion.
+
+---
+
+## Using .env in Node.js
+
+Install the dotenv package:
 ```bash
 npm install dotenv
 ```
 
+At the very top of your main file (`app.js` or `index.js`):
 ```javascript
-// Load at entry point
 require('dotenv').config();
 
-// Access
-console.log(process.env.DATABASE_URL);
+// Now use your variables
+const dbUrl = process.env.DATABASE_URL;
+const port = process.env.PORT || 3000;
 ```
 
-### PM2 with .env
+---
+
+## Using .env with PM2
+
+PM2 can load your `.env` file automatically. In `ecosystem.config.js`:
 
 ```javascript
-// ecosystem.config.js
 module.exports = {
   apps: [{
     name: 'myapp',
-    script: 'app.js',
-    env_file: '.env',
-    // Or inline:
+    script: './app.js',
+    env_file: '/var/www/myapp/.env',
     env: {
       NODE_ENV: 'production'
     }
@@ -62,75 +78,78 @@ module.exports = {
 };
 ```
 
----
-
-## 3. Docker
-
-### docker-compose.yml
-
-```yaml
-services:
-  app:
-    env_file:
-      - .env
-    environment:
-      - NODE_ENV=production
+Or pass the env file when starting:
+```bash
+pm2 start app.js --name myapp --env-file .env
 ```
 
-### Command line
+---
+
+## Next.js Environment Variables
+
+Next.js has a specific naming rule:
+
+```env
+# Only available on the server (keep secrets here)
+DATABASE_URL=mongodb://...
+JWT_SECRET=secret
+
+# Available in the browser too (safe for public data only)
+NEXT_PUBLIC_API_URL=https://api.example.com
+NEXT_PUBLIC_SITE_NAME=My App
+```
+
+> Anything starting with `NEXT_PUBLIC_` is visible to all users. Never put secrets there.
+
+---
+
+## Updating Environment Variables
+
+1. Edit the `.env` file on the server
+2. Reload your app to pick up changes
 
 ```bash
-docker run --env-file .env myimage
-docker run -e NODE_ENV=production myimage
+nano /var/www/myapp/.env
+# Make your changes, save
+
+pm2 reload myapp
 ```
 
 ---
 
-## 4. Systemd Service
+## Checking Current Environment Variables
 
-```ini
-[Service]
-Environment="NODE_ENV=production"
-Environment="PORT=3000"
-EnvironmentFile=/var/www/myapp/.env
+```bash
+# Show all environment variables (careful — shows secrets)
+printenv
+
+# Check a specific variable
+printenv DATABASE_URL
+
+# In Node.js
+node -e "require('dotenv').config(); console.log(process.env.DATABASE_URL)"
 ```
 
 ---
 
-## 5. GitHub Actions Secrets
+## Security Tips
 
-```yaml
-- name: Deploy
-  env:
-    DATABASE_URL: ${{ secrets.DATABASE_URL }}
-  run: |
-    echo "DATABASE_URL=$DATABASE_URL" >> .env
+- Never hard-code secrets in your code files
+- Never commit `.env` to GitHub
+- Use `chmod 600 .env` to restrict access
+- Use different secrets for development and production
+- Generate secure random secrets with:
+```bash
+openssl rand -hex 32
 ```
 
 ---
 
-## 6. Never Commit Secrets
+## Quick Reference
 
-### .gitignore
-
-```
-.env
-.env.local
-.env.production
-*.pem
-```
-
----
-
-## Best Practices
-
-- ✅ Use `.env` files for local/server config
-- ✅ Never commit secrets to Git
-- ✅ Use different keys per environment
-- ✅ Rotate secrets regularly
-- ✅ Use secret managers for teams (Vault, AWS Secrets Manager)
-- ✅ Restrict file permissions (600)
-
----
-
-✅ Environment configured!
+| File | Purpose |
+|------|---------|
+| `.env` | Default (used if nothing else matches) |
+| `.env.production` | Production settings |
+| `.env.development` | Development settings |
+| `.env.local` | Local overrides (never committed) |

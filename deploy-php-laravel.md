@@ -1,21 +1,24 @@
-# Deploy PHP Laravel
+# Deploy PHP / Laravel App
 
-Complete guide for deploying Laravel applications with PHP-FPM and Nginx.
+Laravel uses PHP-FPM (a PHP process manager) and Nginx. No PM2 needed — PHP runs differently from Node.js.
 
 ---
 
-## 1. Install PHP
+## Step 1 — Install PHP
 
 ```bash
 sudo apt update
 sudo apt install php8.3 php8.3-fpm php8.3-cli php8.3-common \
-    php8.3-mysql php8.3-pgsql php8.3-sqlite3 php8.3-mbstring \
-    php8.3-xml php8.3-curl php8.3-zip php8.3-bcmath php8.3-gd -y
+    php8.3-mysql php8.3-mbstring php8.3-xml \
+    php8.3-curl php8.3-zip php8.3-bcmath php8.3-gd -y
+
+# Check PHP is installed
+php --version
 ```
 
 ---
 
-## 2. Install Composer
+## Step 2 — Install Composer (PHP Package Manager)
 
 ```bash
 curl -sS https://getcomposer.org/installer | php
@@ -25,7 +28,7 @@ composer --version
 
 ---
 
-## 3. Project Setup
+## Step 3 — Upload Your App
 
 ```bash
 # Create directory
@@ -33,20 +36,16 @@ sudo mkdir -p /var/www/laravel
 sudo chown -R $USER:$USER /var/www/laravel
 cd /var/www/laravel
 
-# Clone project
-git clone https://github.com/user/repo.git .
+# Clone from GitHub
+git clone https://github.com/yourusername/your-repo.git .
 
-# Install dependencies
+# Install dependencies (no dev packages in production)
 composer install --no-dev --optimize-autoloader
-
-# Permissions
-sudo chown -R www-data:www-data storage bootstrap/cache
-sudo chmod -R 775 storage bootstrap/cache
 ```
 
 ---
 
-## 4. Environment Setup
+## Step 4 — Configure Environment
 
 ```bash
 cp .env.example .env
@@ -56,24 +55,24 @@ nano .env
 ```env
 APP_NAME=MyApp
 APP_ENV=production
+APP_KEY=                    # Will be generated below
 APP_DEBUG=false
 APP_URL=https://example.com
 
 DB_CONNECTION=mysql
 DB_HOST=127.0.0.1
-DB_DATABASE=laravel
-DB_USERNAME=laraveluser
-DB_PASSWORD=password
+DB_PORT=3306
+DB_DATABASE=myapp
+DB_USERNAME=appuser
+DB_PASSWORD=YourDBPassword!
 ```
 
+Generate the app key and run migrations:
 ```bash
-# Generate key
 php artisan key:generate
-
-# Run migrations
 php artisan migrate --force
 
-# Cache config
+# Speed up the app by caching config and routes
 php artisan config:cache
 php artisan route:cache
 php artisan view:cache
@@ -81,15 +80,33 @@ php artisan view:cache
 
 ---
 
-## 5. Nginx Configuration
+## Step 5 — Set File Permissions
+
+Laravel needs to write to `storage` and `bootstrap/cache`:
+
+```bash
+sudo chown -R www-data:www-data storage bootstrap/cache
+sudo chmod -R 775 storage bootstrap/cache
+```
+
+---
+
+## Step 6 — Configure Nginx
+
+```bash
+sudo nano /etc/nginx/sites-available/laravel
+```
 
 ```nginx
 server {
     listen 80;
-    server_name example.com;
+    server_name example.com www.example.com;
     root /var/www/laravel/public;
-
     index index.php;
+
+    # Security headers
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header X-Frame-Options "SAMEORIGIN" always;
 
     location / {
         try_files $uri $uri/ /index.php?$query_string;
@@ -101,12 +118,18 @@ server {
         include fastcgi_params;
     }
 
+    # Block hidden files and sensitive files
     location ~ /\.(?!well-known).* {
+        deny all;
+    }
+
+    location ~ /\.(env|git|htaccess) {
         deny all;
     }
 }
 ```
 
+Enable it:
 ```bash
 sudo ln -s /etc/nginx/sites-available/laravel /etc/nginx/sites-enabled/
 sudo nginx -t
@@ -115,20 +138,31 @@ sudo systemctl reload nginx
 
 ---
 
-## 6. Queue Worker (Optional)
+## Step 7 — Add SSL
 
 ```bash
+sudo certbot --nginx -d example.com -d www.example.com
+```
+
+---
+
+## Optional — Queue Worker
+
+If your app uses queues (sending emails, processing jobs):
+
+```bash
+sudo apt install supervisor -y
 sudo nano /etc/supervisor/conf.d/laravel-worker.conf
 ```
 
 ```ini
 [program:laravel-worker]
-process_name=%(program_name)s_%(process_num)02d
 command=php /var/www/laravel/artisan queue:work --sleep=3 --tries=3
+directory=/var/www/laravel
+user=www-data
 autostart=true
 autorestart=true
 numprocs=2
-user=www-data
 ```
 
 ```bash
@@ -139,14 +173,54 @@ sudo supervisorctl start laravel-worker:*
 
 ---
 
-## 7. Scheduler
+## Optional — Cron Scheduler
+
+If your app uses scheduled tasks:
 
 ```bash
-# Add to crontab
 crontab -e
+```
 
-# Add line:
+Add:
+```
 * * * * * cd /var/www/laravel && php artisan schedule:run >> /dev/null 2>&1
+```
+
+---
+
+## Deploy Updates
+
+```bash
+cd /var/www/laravel
+git pull origin main
+composer install --no-dev --optimize-autoloader
+php artisan migrate --force
+php artisan config:cache
+php artisan route:cache
+php artisan view:cache
+sudo chown -R www-data:www-data storage bootstrap/cache
+sudo systemctl reload php8.3-fpm
+```
+
+---
+
+## Troubleshooting
+
+**500 error / permissions issue:**
+```bash
+sudo chown -R www-data:www-data /var/www/laravel
+sudo chmod -R 775 storage bootstrap/cache
+```
+
+**Check Laravel logs:**
+```bash
+tail -f /var/www/laravel/storage/logs/laravel.log
+```
+
+**Check PHP-FPM:**
+```bash
+sudo systemctl status php8.3-fpm
+sudo tail -f /var/log/php8.3-fpm.log
 ```
 
 ---
@@ -155,11 +229,8 @@ crontab -e
 
 | Task | Command |
 |------|---------|
-| Clear cache | `php artisan cache:clear` |
-| Optimize | `php artisan optimize` |
-| Migrate | `php artisan migrate` |
-| Queue | `php artisan queue:work` |
-
----
-
-✅ Laravel deployed!
+| Clear all cache | `php artisan optimize:clear` |
+| Cache config/routes | `php artisan optimize` |
+| Run migrations | `php artisan migrate` |
+| Check PHP-FPM | `sudo systemctl status php8.3-fpm` |
+| View app logs | `tail -f storage/logs/laravel.log` |

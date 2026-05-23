@@ -1,307 +1,200 @@
-# Initial VPS/EC2 Server Setup Guide
+# Initial Server Setup
 
-Complete guide for first-time server access, security hardening, and user management.
-
----
-
-## Prerequisites
-
-- A freshly provisioned VPS or AWS EC2 instance
-- Root access or sudo privileges
-- SSH client (Terminal, PuTTY, or similar)
+Your first steps after getting a new VPS or EC2 server. Follow these steps in order.
 
 ---
 
-## 1. First-Time SSH Connection
+## Step 1 — Connect to Your Server
 
-### For VPS (root access)
-
+**VPS (you get a root password):**
 ```bash
-ssh root@your-server-ip
+ssh root@YOUR_SERVER_IP
 ```
 
-### For AWS EC2 (key-based)
-
+**AWS EC2 (you get a .pem key file):**
 ```bash
-ssh -i /path/to/your-key.pem ubuntu@your-ec2-ip
-
-# For Amazon Linux
-ssh -i /path/to/your-key.pem ec2-user@your-ec2-ip
+ssh -i /path/to/your-key.pem ubuntu@YOUR_SERVER_IP
 ```
 
-> **Tip:** Set proper permissions for your key file:
+> If you get a "permission denied" error on the .pem file, run:
 > ```bash
 > chmod 400 /path/to/your-key.pem
 > ```
 
 ---
 
-## 2. Update System Packages
+## Step 2 — Update the System
 
-Always update your system first:
+Always do this first. It installs the latest security patches.
 
 ```bash
-# Debian/Ubuntu
 sudo apt update && sudo apt upgrade -y
-
-# CentOS/RHEL/Amazon Linux
-sudo yum update -y
-
-# Amazon Linux 2023
-sudo dnf update -y
 ```
 
 ---
 
-## 3. Set Hostname
+## Step 3 — Set Your Timezone
 
 ```bash
-# Set a meaningful hostname
-sudo hostnamectl set-hostname your-server-name
+# See all timezones
+timedatectl list-timezones | grep Asia
 
-# Verify
-hostnamectl
-```
-
-Update `/etc/hosts`:
-
-```bash
-sudo nano /etc/hosts
-```
-
-Add:
-```
-127.0.0.1   your-server-name
-```
-
----
-
-## 4. Set Timezone
-
-```bash
-# List available timezones
-timedatectl list-timezones
-
-# Set your timezone
+# Set your timezone (change to yours)
 sudo timedatectl set-timezone Asia/Dhaka
 
-# Verify
+# Check it worked
 timedatectl
 ```
 
 ---
 
-## 5. Create Non-Root User (Essential for Security)
+## Step 4 — Create a Normal User (Don't Use Root)
 
-Running as root is dangerous. Create a regular user:
+Using root every day is risky. Create a regular user instead.
 
 ```bash
-# Create new user
+# Create a new user (change "deployer" to any name you like)
 sudo adduser deployer
 
-# Add to sudo group
+# Give it admin (sudo) access
 sudo usermod -aG sudo deployer
 ```
 
-### Set Up SSH Keys for New User
+Now set up SSH key login for this user:
 
 ```bash
-# Switch to new user
+# Switch to the new user
 su - deployer
 
-# Create SSH directory
+# Create SSH folder
 mkdir -p ~/.ssh
 chmod 700 ~/.ssh
 
-# Add your public key
+# Open the file where you'll paste your public key
 nano ~/.ssh/authorized_keys
-# Paste your public key (from your local machine: cat ~/.ssh/id_rsa.pub)
+```
 
+Paste your **public key** here. To find your public key on your local computer:
+```bash
+cat ~/.ssh/id_ed25519.pub
+# or
+cat ~/.ssh/id_rsa.pub
+```
+
+After pasting, save the file and set permissions:
+```bash
 chmod 600 ~/.ssh/authorized_keys
 ```
 
-Test login with new user before disabling root:
-
+**Test it works before closing your current session:**
 ```bash
-ssh deployer@your-server-ip
+# Open a NEW terminal window and try:
+ssh deployer@YOUR_SERVER_IP
 ```
 
 ---
 
-## 6. Secure SSH Configuration
+## Step 5 — Secure SSH (Lock Down Login)
 
-Edit SSH config:
+Edit the SSH settings file:
 
 ```bash
 sudo nano /etc/ssh/sshd_config
 ```
 
-Recommended settings:
+Find and change these lines (add them if they don't exist):
 
-```bash
-# Disable root login
-PermitRootLogin no
-
-# Disable password authentication (after setting up SSH keys)
-PasswordAuthentication no
-
-# Change default port (optional but recommended)
+```
 Port 2222
-
-# Allow only specific users
-AllowUsers deployer
-
-# Limit authentication attempts
-MaxAuthTries 3
-
-# Disable empty passwords
-PermitEmptyPasswords no
-
-# Enable public key authentication
+PermitRootLogin no
+PasswordAuthentication no
 PubkeyAuthentication yes
-
-# Disable X11 forwarding
+AllowUsers deployer
+MaxAuthTries 3
+PermitEmptyPasswords no
 X11Forwarding no
 ```
 
-Restart SSH:
+> **What each setting does:**
+> - `Port 2222` — Changes SSH from the default port 22 (harder for bots to find)
+> - `PermitRootLogin no` — Nobody can log in as root
+> - `PasswordAuthentication no` — Only SSH keys work, no passwords
+> - `AllowUsers deployer` — Only your user can log in
 
+Save and restart SSH:
 ```bash
 sudo systemctl restart sshd
 ```
 
-> ⚠️ **Warning:** Keep your current session open and test new connection in another terminal before closing!
+> ⚠️ **Important:** Keep your current SSH session open. Open a new terminal and test login with port 2222 before closing anything!
+> ```bash
+> ssh -p 2222 deployer@YOUR_SERVER_IP
+> ```
 
 ---
 
-## 7. Install Essential Packages
+## Step 6 — Install Useful Tools
 
 ```bash
-sudo apt install -y \
-    curl \
-    wget \
-    git \
-    htop \
-    vim \
-    nano \
-    unzip \
-    zip \
-    tree \
-    net-tools \
-    software-properties-common \
-    apt-transport-https \
-    ca-certificates \
-    gnupg \
-    lsb-release
+sudo apt install -y curl wget git htop nano unzip net-tools
 ```
 
 ---
 
-## 8. Configure Automatic Security Updates
+## Step 7 — Create Swap Space (Extra Memory)
+
+Useful for servers with 1-2 GB RAM. Swap is like extra memory on disk.
+
+```bash
+# Check if you already have swap
+free -h
+
+# Create a 2GB swap file
+sudo fallocate -l 2G /swapfile
+sudo chmod 600 /swapfile
+sudo mkswap /swapfile
+sudo swapon /swapfile
+
+# Make it permanent (survives reboots)
+echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
+
+# Reduce swap usage (use RAM first)
+echo 'vm.swappiness=10' | sudo tee -a /etc/sysctl.conf
+sudo sysctl -p
+```
+
+---
+
+## Step 8 — Turn On Automatic Security Updates
+
+This keeps your server automatically patched against security holes.
 
 ```bash
 sudo apt install unattended-upgrades -y
 sudo dpkg-reconfigure -plow unattended-upgrades
 ```
 
-Check configuration:
-
-```bash
-sudo nano /etc/apt/apt.conf.d/50unattended-upgrades
-```
-
-Enable security updates:
-
-```
-Unattended-Upgrade::Allowed-Origins {
-    "${distro_id}:${distro_codename}-security";
-};
-```
-
----
-
-## 9. Set Up Swap Space (If Needed)
-
-Check current swap:
-
-```bash
-free -h
-swapon --show
-```
-
-Create swap (recommended: 1-2x RAM for small servers):
-
-```bash
-# Create 2GB swap file
-sudo fallocate -l 2G /swapfile
-sudo chmod 600 /swapfile
-sudo mkswap /swapfile
-sudo swapon /swapfile
-
-# Make permanent
-echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
-
-# Verify
-free -h
-```
-
-Adjust swappiness (lower = less swap usage):
-
-```bash
-sudo sysctl vm.swappiness=10
-echo 'vm.swappiness=10' | sudo tee -a /etc/sysctl.conf
-```
-
----
-
-## 10. Basic System Information Commands
-
-```bash
-# System info
-uname -a
-lsb_release -a
-
-# CPU info
-nproc
-lscpu
-
-# Memory
-free -h
-
-# Disk space
-df -h
-
-# Network interfaces
-ip a
-
-# Running processes
-htop
-```
+Select **Yes** when asked.
 
 ---
 
 ## Quick Checklist
 
-- [ ] SSH connection working
+- [ ] Connected to server
 - [ ] System updated
-- [ ] Hostname set
-- [ ] Timezone configured
-- [ ] Non-root user created with sudo access
-- [ ] SSH keys configured for new user
+- [ ] Timezone set
+- [ ] New user created with sudo
+- [ ] SSH key login working for new user
 - [ ] Root login disabled
-- [ ] Password authentication disabled
-- [ ] Essential packages installed
-- [ ] Automatic security updates enabled
-- [ ] Swap space configured (if needed)
+- [ ] Password login disabled
+- [ ] SSH port changed to 2222
+- [ ] Swap created (if needed)
+- [ ] Auto security updates on
 
 ---
 
 ## Next Steps
 
-1. **[Firewall Configuration](./02-firewall-configuration.md)** - Set up UFW/iptables
-2. **[SSH Security](./03-ssh-keys-and-security.md)** - Advanced SSH hardening
-3. **[Web Server Setup](./nginx-complete-guide.md)** - Install Nginx/Apache
-
----
-
-✅ Your server is now ready for the next steps!
+1. [Firewall Setup](./02-firewall-configuration.md) — Block unwanted traffic
+2. [SSH Security](./03-ssh-keys-and-security.md) — Protect against brute force attacks
+3. [Install Nginx](./nginx-complete-guide.md) — Set up your web server

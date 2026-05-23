@@ -1,94 +1,69 @@
-# VPS & AWS Deployment Notes
+# VPS Server Setup Guides
 
-Complete collection of guides for deploying applications to VPS and AWS EC2.
-
----
-
-## 📁 Server Setup & Security
-
-| Guide | Description |
-|-------|-------------|
-| [Initial Server Setup](./01-initial-server-setup.md) | First-time VPS/EC2 access, user management, basic configuration |
-| [Firewall Configuration](./02-firewall-configuration.md) | UFW, iptables, AWS Security Groups |
-| [SSH Keys and Security](./03-ssh-keys-and-security.md) | SSH keys, Fail2Ban, 2FA, hardening |
-| [Server Security Hardening](./server-security-hardening.md) | Complete security checklist |
+Simple, step-by-step guides for setting up and deploying apps on a VPS or AWS EC2 server.
 
 ---
 
-## 🌐 Web Servers
+## Start Here (Do These in Order)
 
-| Guide | Description |
-|-------|-------------|
-| [Nginx Complete Guide](./nginx-complete-guide.md) | Full Nginx setup, virtual hosts, reverse proxy, SSL |
-| [Certbot Installation](./certbot-installation.md) | Free SSL certificates with Let's Encrypt |
-
----
-
-## 🚀 Application Deployment
-
-| Guide | Description |
-|-------|-------------|
-| [Deploy Node.js/Express](./deploy-nodejs-app.md) | Node.js apps with PM2 and Nginx |
-| [Deploy Next.js](./deploy-nextjs-app.md) | Next.js SSR/SSG deployment |
-| [Deploy Python Flask/Django](./deploy-python-flask-django.md) | Python apps with Gunicorn |
-| [Deploy PHP Laravel](./deploy-php-laravel.md) | Laravel with PHP-FPM |
-| [Deploy Static Sites](./deploy-static-sites.md) | React, Vue, Angular builds |
+| Step | Guide | What It Does |
+|------|-------|-------------|
+| 1 | [Initial Server Setup](./01-initial-server-setup.md) | Connect, create user, secure SSH, add swap |
+| 2 | [Firewall Setup](./02-firewall-configuration.md) | Block unwanted traffic |
+| 3 | [SSH Keys & Fail2Ban](./03-ssh-keys-and-security.md) | Key login + block brute force attacks |
+| 4 | [Install Nginx](./nginx-complete-guide.md) | Web server setup |
+| 5 | [SSL / HTTPS](./certbot-installation.md) | Free SSL certificate |
 
 ---
 
-## 🗄️ Databases
+## Deploy Your App
 
-| Guide | Description |
-|-------|-------------|
-| [Install MongoDB](./install-mongodb.md) | MongoDB installation and security |
-| [Install MySQL/MariaDB](./install-mysql-mariadb.md) | MySQL/MariaDB setup |
-| [Install PostgreSQL](./install-postgresql.md) | PostgreSQL configuration |
-| [Install Redis](./install-redis.md) | Redis cache setup |
-
----
-
-## ☁️ AWS EC2
-
-| Guide | Description |
-|-------|-------------|
-| [AWS EC2 Launch Guide](./aws-ec2-launch-guide.md) | Complete EC2 setup from scratch |
+| App | Guide |
+|-----|-------|
+| Node.js / Express | [deploy-nodejs-app.md](./deploy-nodejs-app.md) |
+| Next.js (SSR) | [deploy-nextjs-app.md](./deploy-nextjs-app.md) |
+| Python Flask/Django | [deploy-python-flask-django.md](./deploy-python-flask-django.md) |
+| PHP / Laravel | [deploy-php-laravel.md](./deploy-php-laravel.md) |
+| Static Sites (React, Vue) | [deploy-static-sites.md](./deploy-static-sites.md) |
 
 ---
 
-## 🔧 DevOps Tools
+## Databases
 
-| Guide | Description |
-|-------|-------------|
-| [Docker Complete Guide](./docker-complete-guide.md) | Docker, Dockerfile, Docker Compose |
-| [PM2 Advanced Guide](./pm2-advanced-guide.md) | PM2 cluster mode, logs, deployment |
-| [GitHub Actions Deploy](./github-actions-deploy.md) | CI/CD with GitHub Actions |
-| [Environment Variables](./environment-variables-guide.md) | Managing secrets and config |
-
----
-
-## 📊 Monitoring & Maintenance
-
-| Guide | Description |
-|-------|-------------|
-| [Server Monitoring](./server-monitoring-guide.md) | System resources, logs, health checks |
-| [Backup Strategies](./backup-strategies.md) | Automated backups, cloud storage |
+| Database | Guide |
+|----------|-------|
+| MongoDB | [install-mongodb.md](./install-mongodb.md) |
+| MySQL / MariaDB | [install-mysql-mariadb.md](./install-mysql-mariadb.md) |
+| PostgreSQL | [install-postgresql.md](./install-postgresql.md) |
+| Redis | [install-redis.md](./install-redis.md) |
 
 ---
 
-## Quick Start
+## Tools & Automation
 
-1. **[Initial Server Setup](./01-initial-server-setup.md)** - Configure your new server
-2. **[Firewall Configuration](./02-firewall-configuration.md)** - Secure your server
-3. **[Nginx Complete Guide](./nginx-complete-guide.md)** - Set up web server
-4. **[Deploy your app](./deploy-nodejs-app.md)** - Deploy your application
-5. **[Certbot Installation](./certbot-installation.md)** - Enable HTTPS
-
----
-
-## Contributing
-
-Feel free to submit PRs for improvements or additional guides.
+| Tool | Guide |
+|------|-------|
+| Docker | [docker-complete-guide.md](./docker-complete-guide.md) |
+| PM2 (process manager) | [pm2-advanced-guide.md](./pm2-advanced-guide.md) |
+| GitHub Actions (auto-deploy) | [github-actions-deploy.md](./github-actions-deploy.md) |
+| Environment Variables | [environment-variables-guide.md](./environment-variables-guide.md) |
 
 ---
 
-**Last Updated:** December 2025
+## Monitoring & Backups
+
+| Guide | What It Covers |
+|-------|---------------|
+| [Server Monitoring](./server-monitoring-guide.md) | CPU, memory, disk alerts |
+| [Backup Strategies](./backup-strategies.md) | Automated backups |
+| [Security Hardening](./server-security-hardening.md) | Extra security steps |
+
+---
+
+## AWS EC2
+
+[AWS EC2 Launch Guide](./aws-ec2-launch-guide.md) — Create and set up an EC2 instance from scratch.
+
+---
+
+**Last Updated:** May 2026

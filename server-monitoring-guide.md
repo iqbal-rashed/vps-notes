@@ -1,207 +1,185 @@
-# Server Monitoring Guide
+# Server Monitoring
 
-Essential monitoring tools and commands for VPS management.
+Commands to check what's happening on your server — CPU, memory, disk, processes, and logs.
 
 ---
 
-## 1. System Resources
+## Check System Resources
 
-### CPU & Memory
+### CPU and Memory
 
 ```bash
-# Real-time monitoring
+# Live interactive view (press q to quit)
 htop
 
-# CPU info
-top
-lscpu
-nproc
-
-# Memory
+# Quick memory check
 free -h
-cat /proc/meminfo
+
+# Check CPU count
+nproc
 ```
 
-### Disk Usage
+### Disk Space
 
 ```bash
-# Disk space
+# Check all drives/partitions
 df -h
 
-# Directory sizes
-du -sh /var/www/*
-du -sh * | sort -rh | head -10
+# Find what's using the most space
+du -sh /var/www/* | sort -rh | head -10
+du -sh /var/log/* | sort -rh | head -10
+```
 
-# Disk I/O
-iostat
-iotop
+### Check if Server is Overloaded
+
+```bash
+# Server load (1-min, 5-min, 15-min averages)
+# Numbers should be below your CPU count
+uptime
 ```
 
 ---
 
-## 2. Network Monitoring
+## Check Running Services
 
 ```bash
-# Open ports
-ss -tlnp
-netstat -tlnp
+# List all running services
+sudo systemctl list-units --type=service --state=running
 
-# Active connections
-ss -tn
-netstat -an | grep ESTABLISHED
-
-# Network traffic
-iftop
-nethogs
-
-# Bandwidth test
-speedtest-cli
-```
-
----
-
-## 3. Process Monitoring
-
-```bash
-# All processes
-ps aux
-
-# Search process
-ps aux | grep nginx
-
-# Process tree
-pstree
-
-# Kill process
-kill PID
-kill -9 PID
-```
-
----
-
-## 4. Log Monitoring
-
-```bash
-# System logs
-sudo journalctl -f
-sudo tail -f /var/log/syslog
-
-# Nginx logs
-sudo tail -f /var/log/nginx/access.log
-sudo tail -f /var/log/nginx/error.log
-
-# Auth logs
-sudo tail -f /var/log/auth.log
-
-# Search logs
-sudo grep -i error /var/log/syslog
-```
-
----
-
-## 5. Service Status
-
-```bash
-# Check service
+# Check a specific service
 sudo systemctl status nginx
-sudo systemctl status mysql
-sudo systemctl status mongodb
-
-# List all services
-sudo systemctl list-units --type=service
-
-# Failed services
-sudo systemctl --failed
+sudo systemctl status pm2-deployer  # or your PM2 service name
 ```
 
 ---
 
-## 6. Security Monitoring
+## Check Open Ports
+
+See what's listening on the network. Unexpected open ports are a security risk.
 
 ```bash
-# Failed login attempts
-sudo grep "Failed password" /var/log/auth.log | tail -20
+sudo ss -tlnp
+```
 
-# Currently logged in users
-who
-w
+You should only see ports you expect (22/2222, 80, 443, 3000, etc.).
+
+---
+
+## Check Logs
+
+### Nginx Logs
+
+```bash
+# Live access log (see who's visiting)
+sudo tail -f /var/log/nginx/access.log
+
+# Error log (see what's broken)
+sudo tail -f /var/log/nginx/error.log
+```
+
+### System Logs
+
+```bash
+# Recent system events
+sudo journalctl -xe
+
+# Follow system log live
+sudo journalctl -f
+
+# See who logged in
 last
+sudo grep "Failed password" /var/log/auth.log | tail -20
+```
 
-# Check for rootkits
-sudo rkhunter --check
+### App Logs (PM2)
 
-# Open files by process
-lsof -i :80
+```bash
+pm2 logs myapp
+pm2 logs myapp --lines 100
 ```
 
 ---
 
-## 7. Quick Health Check Script
+## Check Network
+
+```bash
+# See all active connections
+ss -tn
+
+# Check if a port is open from outside (run on your local machine)
+nc -zv YOUR_SERVER_IP 80
+nc -zv YOUR_SERVER_IP 443
+```
+
+---
+
+## Check Disk I/O (If Server is Slow)
+
+```bash
+# Install if not available
+sudo apt install iotop -y
+
+# See what's reading/writing to disk
+sudo iotop
+```
+
+---
+
+## Set Up a Simple Alert (Disk Space)
+
+Get an email if disk is over 80% full. Add this to cron:
+
+```bash
+crontab -e
+```
+
+Add:
+```
+0 8 * * * df -h | awk '$5+0 > 80 {print "WARNING: Disk usage over 80% on " $6 " (" $5 ")" }' | mail -s "Disk Alert" your@email.com
+```
+
+---
+
+## Quick Health Check Script
+
+Save this as `/usr/local/bin/check-server.sh`:
 
 ```bash
 #!/bin/bash
-# /usr/local/bin/health-check.sh
-
-echo "=== System Health Check ==="
+echo "=== Server Health Check ==="
 echo ""
-
-echo "=== CPU & Memory ==="
+echo "Uptime:"
 uptime
+echo ""
+echo "Memory:"
 free -h
 echo ""
-
-echo "=== Disk Usage ==="
-df -h / | tail -1
+echo "Disk:"
+df -h /
 echo ""
-
-echo "=== Services ==="
-for service in nginx mysql mongod redis-server; do
-    if systemctl is-active --quiet $service 2>/dev/null; then
-        echo "✓ $service is running"
-    else
-        echo "✗ $service is NOT running"
-    fi
-done
+echo "PM2 Apps:"
+pm2 list
 echo ""
-
-echo "=== Top Processes ==="
-ps aux --sort=-%mem | head -6
+echo "Nginx Status:"
+sudo systemctl is-active nginx
 ```
 
 ```bash
-chmod +x /usr/local/bin/health-check.sh
+chmod +x /usr/local/bin/check-server.sh
+check-server.sh
 ```
-
----
-
-## 8. Monitoring Tools
-
-### Install Useful Tools
-
-```bash
-sudo apt install -y htop iotop iftop nethogs sysstat
-```
-
-### UptimeRobot (External)
-
-- Free external monitoring
-- HTTP, ping, port checks
-- Email/webhook alerts
-- https://uptimerobot.com
 
 ---
 
 ## Quick Reference
 
-| Task | Command |
-|------|---------|
-| CPU/Memory | `htop` |
+| What to Check | Command |
+|---------------|---------|
+| CPU/Memory live | `htop` |
 | Disk space | `df -h` |
-| Open ports | `ss -tlnp` |
-| Logs | `sudo journalctl -f` |
-| Services | `sudo systemctl status service` |
-| Connections | `ss -tn` |
-
----
-
-✅ Server monitoring configured!
+| Open ports | `sudo ss -tlnp` |
+| Nginx errors | `sudo tail -f /var/log/nginx/error.log` |
+| App logs | `pm2 logs myapp` |
+| Failed logins | `sudo grep "Failed" /var/log/auth.log` |
+| Server load | `uptime` |
+| Who's logged in | `who` |

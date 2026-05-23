@@ -1,171 +1,104 @@
-# Docker Complete Guide
+# Docker Guide
 
-Complete guide for Docker installation, images, containers, and Docker Compose.
+Docker lets you package your app and all its dependencies into a "container" — it runs the same way everywhere.
+
+**When to use Docker:** When you want your dev environment to match production exactly, or when deploying multiple apps on one server.
 
 ---
 
-## 1. Install Docker
+## Install Docker
 
 ```bash
-# Remove old versions
-sudo apt remove docker docker-engine docker.io containerd runc
+# Remove old versions if any
+sudo apt remove docker docker.io containerd runc 2>/dev/null
 
 # Install prerequisites
 sudo apt update
 sudo apt install ca-certificates curl gnupg -y
 
-# Add Docker GPG key
+# Add Docker's official key and repo
 sudo install -m 0755 -d /etc/apt/keyrings
 curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
 sudo chmod a+r /etc/apt/keyrings/docker.gpg
 
-# Add repository
-echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | \
+  sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
 
 # Install Docker
 sudo apt update
 sudo apt install docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin -y
 
-# Verify
+# Check it works
 docker --version
 docker compose version
 ```
 
----
-
-## 2. Post-Installation
-
+**Run Docker without sudo:**
 ```bash
-# Add user to docker group (no sudo needed)
 sudo usermod -aG docker $USER
-
-# Apply changes (logout/login or run)
-newgrp docker
-
-# Test
-docker run hello-world
+newgrp docker   # Apply immediately without logging out
 ```
 
 ---
 
-## 3. Docker Commands
-
-### Container Management
+## Basic Docker Commands
 
 ```bash
-# Run container
-docker run -d --name myapp -p 3000:3000 node:20
+# Run a container
+docker run -d --name myapp -p 3000:3000 myimage
 
-# Run with environment variables
-docker run -d --name myapp -p 3000:3000 -e NODE_ENV=production myimage
+# See running containers
+docker ps
 
-# List containers
-docker ps        # Running
-docker ps -a     # All
+# See all containers (including stopped)
+docker ps -a
 
-# Stop/Start/Restart
+# Stop / Start / Remove
 docker stop myapp
 docker start myapp
-docker restart myapp
-
-# Remove container
 docker rm myapp
-docker rm -f myapp  # Force
 
 # View logs
 docker logs myapp
-docker logs -f myapp  # Follow
+docker logs -f myapp    # Follow live
 
-# Execute command in container
+# Open a shell inside a container
 docker exec -it myapp bash
-docker exec -it myapp sh
-```
 
-### Image Management
-
-```bash
-# List images
+# See images you've downloaded/built
 docker images
 
-# Pull image
-docker pull node:20
-
-# Build image
-docker build -t myapp:latest .
-
-# Remove image
-docker rmi myapp:latest
-
-# Remove unused images
-docker image prune
-docker image prune -a  # All unused
-```
-
-### Volumes
-
-```bash
-# Create volume
-docker volume create mydata
-
-# List volumes
-docker volume ls
-
-# Run with volume
-docker run -d -v mydata:/app/data myapp
-
-# Bind mount
-docker run -d -v $(pwd)/data:/app/data myapp
-```
-
-### Networks
-
-```bash
-# Create network
-docker network create mynetwork
-
-# Run with network
-docker run -d --network mynetwork --name myapp myimage
-
-# List networks
-docker network ls
+# Clean up unused images and containers (free disk space)
+docker system prune
 ```
 
 ---
 
-## 4. Dockerfile
+## Write a Dockerfile
 
-### Node.js Application
+A `Dockerfile` is a recipe for building your app's image.
+
+### Node.js App
 
 ```dockerfile
-# Base image
 FROM node:20-alpine
 
-# Set working directory
 WORKDIR /app
 
-# Copy package files
+# Install dependencies first (cached unless package.json changes)
 COPY package*.json ./
-
-# Install dependencies
 RUN npm ci --only=production
 
 # Copy source code
 COPY . .
 
-# Build (if needed)
-RUN npm run build
-
-# Expose port
 EXPOSE 3000
-
-# Start command
-CMD ["node", "dist/index.js"]
+CMD ["node", "app.js"]
 ```
 
-### Multi-Stage Build
+### Next.js App
 
 ```dockerfile
-# Build stage
 FROM node:20-alpine AS builder
 WORKDIR /app
 COPY package*.json ./
@@ -173,46 +106,50 @@ RUN npm ci
 COPY . .
 RUN npm run build
 
-# Production stage
 FROM node:20-alpine
 WORKDIR /app
-COPY --from=builder /app/dist ./dist
-COPY --from=builder /app/node_modules ./node_modules
-COPY package*.json ./
+COPY --from=builder /app/.next/standalone ./
+COPY --from=builder /app/.next/static ./.next/static
+COPY --from=builder /app/public ./public
 EXPOSE 3000
-CMD ["node", "dist/index.js"]
+CMD ["node", "server.js"]
 ```
 
-### .dockerignore
+### .dockerignore (Important!)
+
+Create this file so Docker doesn't copy unnecessary files:
 
 ```
 node_modules
-npm-debug.log
 .git
-.gitignore
 .env
-Dockerfile
-.dockerignore
-README.md
+*.log
+.next
+dist
+```
+
+Build and run:
+```bash
+docker build -t myapp .
+docker run -d --name myapp -p 3000:3000 myapp
 ```
 
 ---
 
-## 5. Docker Compose
+## Docker Compose (Multiple Services Together)
 
-### Basic docker-compose.yml
+Docker Compose lets you run your app + database + cache together with one command.
+
+Create `docker-compose.yml`:
 
 ```yaml
-version: '3.8'
-
 services:
   app:
     build: .
     ports:
       - "3000:3000"
-    environment:
-      - NODE_ENV=production
-      - DATABASE_URL=mongodb://mongo:27017/myapp
+    env_file:
+      - .env
     depends_on:
       - mongo
     restart: unless-stopped
@@ -221,17 +158,40 @@ services:
     image: mongo:7
     volumes:
       - mongo_data:/data/db
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: admin
+      MONGO_INITDB_ROOT_PASSWORD: StrongPassword!
     restart: unless-stopped
 
 volumes:
   mongo_data:
 ```
 
-### Full Stack Example
+Commands:
+```bash
+# Start all services
+docker compose up -d
+
+# Stop all services
+docker compose down
+
+# View logs
+docker compose logs -f
+
+# Rebuild after code changes
+docker compose up -d --build
+
+# See status
+docker compose ps
+```
+
+---
+
+## Nginx + App with Docker Compose
+
+Full example with Nginx in front:
 
 ```yaml
-version: '3.8'
-
 services:
   nginx:
     image: nginx:alpine
@@ -239,8 +199,7 @@ services:
       - "80:80"
       - "443:443"
     volumes:
-      - ./nginx.conf:/etc/nginx/nginx.conf:ro
-      - ./ssl:/etc/nginx/ssl:ro
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
     depends_on:
       - app
     restart: unless-stopped
@@ -248,115 +207,59 @@ services:
   app:
     build: .
     expose:
-      - "3000"
-    environment:
-      - NODE_ENV=production
-      - DATABASE_URL=postgresql://user:pass@db:5432/myapp
-      - REDIS_URL=redis://redis:6379
-    depends_on:
-      - db
-      - redis
+      - "3000"    # Only expose inside the Docker network, not to the internet
+    env_file:
+      - .env
     restart: unless-stopped
 
   db:
-    image: postgres:16
+    image: postgres:16-alpine
     environment:
-      - POSTGRES_USER=user
-      - POSTGRES_PASSWORD=pass
-      - POSTGRES_DB=myapp
+      POSTGRES_USER: appuser
+      POSTGRES_PASSWORD: StrongPassword!
+      POSTGRES_DB: myapp
     volumes:
       - postgres_data:/var/lib/postgresql/data
     restart: unless-stopped
 
-  redis:
-    image: redis:alpine
-    command: redis-server --appendonly yes
-    volumes:
-      - redis_data:/data
-    restart: unless-stopped
-
 volumes:
   postgres_data:
-  redis_data:
 ```
 
-### Docker Compose Commands
+---
 
+## Security Tips for Docker
+
+- Never run containers as root — add `USER node` or `USER appuser` in your Dockerfile
+- Never put secrets in your `Dockerfile` — use `.env` files or Docker secrets
+- Keep the `.env` file in `.dockerignore` so it doesn't get baked into the image
+- Databases in Docker should not have ports published (`ports:`) — only `expose:` so they're only reachable within the container network
+- Regularly update your base images: `docker pull node:20-alpine`
+
+---
+
+## Troubleshooting
+
+**Container won't start:**
 ```bash
-# Start services
-docker compose up -d
+docker logs myapp
+```
 
-# Stop services
-docker compose down
+**Can't connect to app:**
+```bash
+# Check the port mapping
+docker ps
+# Make sure ports shows: 0.0.0.0:3000->3000/tcp
+```
 
-# View logs
-docker compose logs -f
+**Out of disk space:**
+```bash
+docker system prune -a   # Removes all unused images, containers, networks
+```
 
-# Rebuild
+**Rebuild after code change:**
+```bash
 docker compose up -d --build
-
-# Scale service
-docker compose up -d --scale app=3
-
-# Execute command
-docker compose exec app bash
-```
-
----
-
-## 6. Production Tips
-
-### Health Checks
-
-```yaml
-services:
-  app:
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
-```
-
-### Resource Limits
-
-```yaml
-services:
-  app:
-    deploy:
-      resources:
-        limits:
-          cpus: '0.5'
-          memory: 512M
-        reservations:
-          memory: 256M
-```
-
-### Restart Policies
-
-```yaml
-services:
-  app:
-    restart: unless-stopped  # or always, on-failure
-```
-
----
-
-## 7. Cleanup
-
-```bash
-# Remove stopped containers
-docker container prune
-
-# Remove unused images
-docker image prune -a
-
-# Remove unused volumes
-docker volume prune
-
-# Remove everything unused
-docker system prune -a --volumes
 ```
 
 ---
@@ -365,14 +268,9 @@ docker system prune -a --volumes
 
 | Task | Command |
 |------|---------|
-| Run container | `docker run -d -p 3000:3000 image` |
-| List containers | `docker ps` |
-| View logs | `docker logs -f container` |
-| Execute shell | `docker exec -it container bash` |
-| Build image | `docker build -t name .` |
-| Compose up | `docker compose up -d` |
-| Compose down | `docker compose down` |
-
----
-
-✅ Docker is ready!
+| Start all (Compose) | `docker compose up -d` |
+| Stop all | `docker compose down` |
+| Rebuild | `docker compose up -d --build` |
+| Logs | `docker compose logs -f` |
+| Shell into container | `docker exec -it myapp bash` |
+| Free disk space | `docker system prune` |

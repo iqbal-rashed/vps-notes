@@ -1,50 +1,21 @@
-# Deploy Next.js Application
+# Deploy a Next.js App (Server-Side)
 
-Complete guide for deploying Next.js applications with SSR/SSG support on VPS.
+Next.js runs as a real server on your VPS. This means:
+- Server-side rendering (SSR) works
+- API routes work
+- Dynamic pages work
+- PM2 keeps it running 24/7
 
----
-
-## Prerequisites
-
-- Node.js 18+ installed
-- PM2 process manager
-- Nginx web server
-- Domain pointing to your server
+> This guide uses **standalone mode** which is the best way to deploy Next.js on a VPS.
 
 ---
 
-## 1. Build Modes
+## Step 1 — Prepare Your Next.js App for Deployment
 
-### Static Export (SSG Only)
-
-For fully static sites:
+In your **next.config.js** (or `next.config.ts`), add `output: 'standalone'`:
 
 ```javascript
 // next.config.js
-/** @type {import('next').NextConfig} */
-const nextConfig = {
-  output: 'export',
-  trailingSlash: true,
-  images: {
-    unoptimized: true,
-  },
-};
-
-module.exports = nextConfig;
-```
-
-```bash
-npm run build
-# Output in 'out' directory
-```
-
-### Standalone Mode (Recommended for VPS)
-
-For SSR and full features:
-
-```javascript
-// next.config.js
-/** @type {import('next').NextConfig} */
 const nextConfig = {
   output: 'standalone',
 };
@@ -52,53 +23,96 @@ const nextConfig = {
 module.exports = nextConfig;
 ```
 
+This makes Next.js bundle everything it needs into one folder — easier to deploy.
+
 ---
 
-## 2. Prepare Application
+## Step 2 — Install Node.js and PM2 on the Server
 
-### Clone and Install
+If you haven't already:
 
 ```bash
-cd /var/www
-git clone https://github.com/yourusername/nextjs-app.git
-cd nextjs-app
-npm install
+# Install Node.js 20
+curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+sudo apt-get install -y nodejs
+
+# Install PM2
+sudo npm install -g pm2
 ```
 
-### Environment Variables
+---
+
+## Step 3 — Upload Your App to the Server
+
+**Option A: Clone from GitHub (recommended)**
+```bash
+cd /var/www
+git clone https://github.com/yourusername/your-nextjs-app.git nextjs-app
+cd nextjs-app
+```
+
+**Option B: Upload from local machine**
+```bash
+# Run this on your LOCAL machine
+scp -r ./your-nextjs-app deployer@YOUR_SERVER_IP:/var/www/nextjs-app
+```
+
+---
+
+## Step 4 — Set Up Environment Variables
 
 ```bash
-nano .env.production
+nano /var/www/nextjs-app/.env.production
 ```
 
 ```env
 NODE_ENV=production
 NEXT_PUBLIC_API_URL=https://api.example.com
 DATABASE_URL=mongodb://localhost:27017/myapp
-NEXTAUTH_SECRET=your-secret-key
+NEXTAUTH_SECRET=change-this-to-a-long-random-string
 NEXTAUTH_URL=https://example.com
 ```
 
-### Build Application
-
+Secure it:
 ```bash
-npm run build
+chmod 600 /var/www/nextjs-app/.env.production
 ```
 
 ---
 
-## 3. Deploy with Standalone Output
-
-### Copy Standalone Build
+## Step 5 — Install and Build
 
 ```bash
-# After build, the standalone output is in .next/standalone
-cp -r .next/standalone /var/www/nextjs-production
-cp -r .next/static /var/www/nextjs-production/.next/static
-cp -r public /var/www/nextjs-production/public
+cd /var/www/nextjs-app
+npm install
+npm run build
 ```
 
-### Create Ecosystem File
+After the build, Next.js creates a `.next/standalone/` folder with everything needed to run.
+
+---
+
+## Step 6 — Copy the Standalone Build
+
+```bash
+# Create production folder
+mkdir -p /var/www/nextjs-production
+
+# Copy the standalone output
+cp -r /var/www/nextjs-app/.next/standalone/. /var/www/nextjs-production/
+
+# Copy static files (CSS, JS, images)
+cp -r /var/www/nextjs-app/.next/static /var/www/nextjs-production/.next/static
+
+# Copy public folder (favicon, images, etc.)
+cp -r /var/www/nextjs-app/public /var/www/nextjs-production/public
+```
+
+---
+
+## Step 7 — Start with PM2
+
+Create a PM2 config file:
 
 ```bash
 nano /var/www/nextjs-production/ecosystem.config.js
@@ -110,8 +124,6 @@ module.exports = {
     name: 'nextjs-app',
     script: 'server.js',
     cwd: '/var/www/nextjs-production',
-    instances: 'max',
-    exec_mode: 'cluster',
     env: {
       NODE_ENV: 'production',
       PORT: 3000
@@ -119,51 +131,28 @@ module.exports = {
     max_memory_restart: '500M',
     error_file: '/var/log/pm2/nextjs-error.log',
     out_file: '/var/log/pm2/nextjs-out.log',
-    time: true
   }]
 };
 ```
 
-### Start with PM2
-
+Start it:
 ```bash
 cd /var/www/nextjs-production
 pm2 start ecosystem.config.js
 pm2 save
 pm2 startup
+# Run the command it gives you
 ```
 
----
-
-## 4. Deploy with npm start
-
-Alternative without standalone:
-
+Check it's running:
 ```bash
-nano /var/www/nextjs-app/ecosystem.config.js
-```
-
-```javascript
-module.exports = {
-  apps: [{
-    name: 'nextjs-app',
-    script: 'npm',
-    args: 'start',
-    cwd: '/var/www/nextjs-app',
-    instances: 1,  // Next.js handles its own clustering
-    env: {
-      NODE_ENV: 'production',
-      PORT: 3000
-    }
-  }]
-};
+pm2 status
+pm2 logs nextjs-app
 ```
 
 ---
 
-## 5. Nginx Configuration
-
-### Basic Reverse Proxy
+## Step 8 — Configure Nginx
 
 ```bash
 sudo nano /etc/nginx/sites-available/nextjs-app
@@ -172,9 +161,32 @@ sudo nano /etc/nginx/sites-available/nextjs-app
 ```nginx
 server {
     listen 80;
-    listen [::]:80;
     server_name example.com www.example.com;
 
+    # Security headers
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header X-Frame-Options "SAMEORIGIN" always;
+    add_header X-XSS-Protection "1; mode=block" always;
+
+    # Next.js static files — cache for 1 year
+    location /_next/static/ {
+        proxy_pass http://localhost:3000;
+        expires 365d;
+        add_header Cache-Control "public, immutable";
+        access_log off;
+    }
+
+    # API routes — no caching
+    location /api/ {
+        proxy_pass http://localhost:3000;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    # All other pages — forward to Next.js server
     location / {
         proxy_pass http://localhost:3000;
         proxy_http_version 1.1;
@@ -184,84 +196,11 @@ server {
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_cache_bypass $http_upgrade;
     }
 }
 ```
 
-### Optimized Configuration with Caching
-
-```nginx
-# Upstream
-upstream nextjs_upstream {
-    server 127.0.0.1:3000;
-    keepalive 64;
-}
-
-# Cache zone
-proxy_cache_path /var/cache/nginx/nextjs levels=1:2 keys_zone=NEXTJS:100m inactive=7d use_temp_path=off;
-
-server {
-    listen 80;
-    listen [::]:80;
-    server_name example.com www.example.com;
-
-    # Gzip
-    gzip on;
-    gzip_proxied any;
-    gzip_comp_level 6;
-    gzip_types text/plain text/css text/xml application/json application/javascript application/rss+xml application/atom+xml image/svg+xml;
-
-    # Static files from Next.js
-    location /_next/static {
-        proxy_cache NEXTJS;
-        proxy_pass http://nextjs_upstream;
-        add_header X-Cache-Status $upstream_cache_status;
-        expires 365d;
-        access_log off;
-    }
-
-    # Static public files
-    location /static {
-        alias /var/www/nextjs-production/public/static;
-        expires 365d;
-        access_log off;
-    }
-
-    # Image optimization
-    location /_next/image {
-        proxy_cache NEXTJS;
-        proxy_cache_valid 200 60m;
-        proxy_pass http://nextjs_upstream;
-    }
-
-    # API routes - no cache
-    location /api {
-        proxy_pass http://nextjs_upstream;
-        proxy_http_version 1.1;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-    }
-
-    # Main application
-    location / {
-        proxy_pass http://nextjs_upstream;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection 'upgrade';
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_cache_bypass $http_upgrade;
-    }
-}
-```
-
-### Enable Site
-
+Enable the site:
 ```bash
 sudo ln -s /etc/nginx/sites-available/nextjs-app /etc/nginx/sites-enabled/
 sudo nginx -t
@@ -270,7 +209,7 @@ sudo systemctl reload nginx
 
 ---
 
-## 6. SSL with Certbot
+## Step 9 — Add SSL (HTTPS)
 
 ```bash
 sudo certbot --nginx -d example.com -d www.example.com
@@ -278,42 +217,9 @@ sudo certbot --nginx -d example.com -d www.example.com
 
 ---
 
-## 7. Static Export Deployment
+## Deploy Updates (When You Push New Code)
 
-For SSG-only sites, serve directly with Nginx:
-
-```nginx
-server {
-    listen 80;
-    server_name example.com www.example.com;
-    root /var/www/nextjs-app/out;
-    index index.html;
-
-    # Handle client-side routing
-    location / {
-        try_files $uri $uri.html $uri/ /index.html;
-    }
-
-    # Cache static assets
-    location /_next/static {
-        expires 365d;
-        add_header Cache-Control "public, immutable";
-    }
-
-    location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2)$ {
-        expires 30d;
-        add_header Cache-Control "public";
-    }
-
-    # Security headers
-    add_header X-Frame-Options "SAMEORIGIN" always;
-    add_header X-Content-Type-Options "nosniff" always;
-}
-```
-
----
-
-## 8. Deployment Script
+Create a deploy script:
 
 ```bash
 nano /var/www/nextjs-app/deploy.sh
@@ -325,200 +231,89 @@ set -e
 
 APP_DIR="/var/www/nextjs-app"
 PROD_DIR="/var/www/nextjs-production"
-BRANCH="main"
 
-echo "🚀 Starting Next.js deployment..."
-
+echo "Pulling latest code..."
 cd $APP_DIR
+git pull origin main
 
-echo "📥 Pulling latest changes..."
-git fetch origin
-git reset --hard origin/$BRANCH
+echo "Installing dependencies..."
+npm install
 
-echo "📦 Installing dependencies..."
-npm ci
-
-echo "🔨 Building application..."
+echo "Building..."
 npm run build
 
-echo "📂 Copying standalone build..."
-rm -rf $PROD_DIR/*
-cp -r .next/standalone/* $PROD_DIR/
+echo "Copying build..."
+cp -r .next/standalone/. $PROD_DIR/
 cp -r .next/static $PROD_DIR/.next/
 cp -r public $PROD_DIR/
 
-echo "🔄 Reloading PM2..."
+echo "Reloading app..."
 pm2 reload nextjs-app
 
-echo "✅ Deployment complete!"
+echo "Done!"
 ```
 
 ```bash
 chmod +x /var/www/nextjs-app/deploy.sh
 ```
 
----
-
-## 9. Environment Variables in Production
-
-### Runtime Environment Variables
-
-```javascript
-// For runtime (server-side) variables
-// Access via process.env.VARIABLE_NAME
-
-// next.config.js
-module.exports = {
-  env: {
-    CUSTOM_VAR: process.env.CUSTOM_VAR,
-  },
-};
-```
-
-### Build-time Environment Variables
-
+To deploy:
 ```bash
-# Variables prefixed with NEXT_PUBLIC_ are available in browser
-NEXT_PUBLIC_API_URL=https://api.example.com
-```
-
-### Using dotenv
-
-```bash
-# .env.local - local development
-# .env.production - production build
-# .env - default
+/var/www/nextjs-app/deploy.sh
 ```
 
 ---
 
-## 10. Health Check Endpoint
-
-Create `app/api/health/route.ts` (App Router):
-
-```typescript
-import { NextResponse } from 'next/server';
-
-export async function GET() {
-  return NextResponse.json({
-    status: 'healthy',
-    timestamp: new Date().toISOString(),
-    version: process.env.npm_package_version || '1.0.0'
-  });
-}
-```
-
-Or `pages/api/health.ts` (Pages Router):
-
-```typescript
-import type { NextApiRequest, NextApiResponse } from 'next';
-
-export default function handler(req: NextApiRequest, res: NextApiResponse) {
-  res.status(200).json({ status: 'healthy' });
-}
-```
-
----
-
-## 11. Troubleshooting
-
-### Build Errors
+## PM2 Commands
 
 ```bash
-# Clear cache and rebuild
-rm -rf .next node_modules
-npm install
-npm run build
-```
+# See running apps
+pm2 list
 
-### Memory Issues
-
-```bash
-# Increase Node.js memory
-NODE_OPTIONS="--max-old-space-size=4096" npm run build
-
-# In ecosystem.config.js
-node_args: '--max-old-space-size=4096'
-```
-
-### 500 Errors
-
-```bash
-# Check PM2 logs
+# See logs
 pm2 logs nextjs-app
 
-# Check Nginx error logs
-sudo tail -f /var/log/nginx/error.log
-```
+# Reload (no downtime)
+pm2 reload nextjs-app
 
-### API Routes Not Working
-
-```bash
-# Ensure API routes are in correct directory
-# App Router: app/api/
-# Pages Router: pages/api/
-
-# Check proxy pass in Nginx
-location /api {
-    proxy_pass http://localhost:3000;
-}
+# Restart
+pm2 restart nextjs-app
 ```
 
 ---
 
-## 12. Performance Optimization
+## Troubleshooting
 
-### Image Optimization
-
-```javascript
-// next.config.js
-module.exports = {
-  images: {
-    domains: ['example.com', 'cdn.example.com'],
-    formats: ['image/avif', 'image/webp'],
-    deviceSizes: [640, 750, 828, 1080, 1200, 1920, 2048, 3840],
-  },
-};
-```
-
-### Bundle Analysis
-
+**Build fails:**
 ```bash
-npm install @next/bundle-analyzer
-
-# next.config.js
-const withBundleAnalyzer = require('@next/bundle-analyzer')({
-  enabled: process.env.ANALYZE === 'true',
-});
-
-module.exports = withBundleAnalyzer({
-  // config
-});
-
-# Run analysis
-ANALYZE=true npm run build
+# If memory error, increase Node.js memory limit
+NODE_OPTIONS="--max-old-space-size=4096" npm run build
 ```
 
----
+**App crashes at startup:**
+```bash
+pm2 logs nextjs-app --lines 100
+```
 
-## Quick Reference
+**502 Bad Gateway:**
+```bash
+# Check Next.js is running
+pm2 status
 
-| Task | Command |
-|------|---------|
-| Build | `npm run build` |
-| Start prod | `npm start` or `pm2 start` |
-| View logs | `pm2 logs nextjs-app` |
-| Restart | `pm2 restart nextjs-app` |
-| Zero-downtime reload | `pm2 reload nextjs-app` |
+# Check it's listening on port 3000
+sudo ss -tlnp | grep 3000
+```
+
+**Pages not loading after deploy:**
+```bash
+# Sometimes a full restart is needed
+pm2 restart nextjs-app
+```
 
 ---
 
 ## Next Steps
 
-1. **[CI/CD Setup](./github-actions-deploy.md)** - Automated deployments
-2. **[SSL Setup](./certbot-installation.md)** - HTTPS with Certbot
-3. **[Monitoring](./server-monitoring-guide.md)** - Application monitoring
-
----
-
-✅ Your Next.js application is deployed!
+1. [SSL Certificate](./certbot-installation.md) — Add HTTPS
+2. [GitHub Actions](./github-actions-deploy.md) — Auto-deploy on git push
+3. [Monitoring](./server-monitoring-guide.md) — Monitor your server

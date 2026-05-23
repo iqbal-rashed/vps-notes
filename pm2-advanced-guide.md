@@ -1,208 +1,179 @@
-# PM2 Advanced Guide
+# PM2 Process Manager
 
-Complete guide for PM2 process manager with cluster mode, monitoring, and logs.
+PM2 keeps your Node.js app running 24/7. If the app crashes, PM2 restarts it. If the server reboots, PM2 starts your app again automatically.
 
 ---
 
-## 1. Install PM2
+## Install PM2
 
 ```bash
-npm install -g pm2
+sudo npm install -g pm2
 ```
 
 ---
 
-## 2. Basic Commands
+## Start Your App
 
 ```bash
-# Start application
+# Basic start
 pm2 start app.js --name myapp
 
-# With npm script
+# If your app uses `npm start`
 pm2 start npm --name myapp -- start
 
-# List processes
+# See all running apps
 pm2 list
-pm2 status
-
-# Stop/Restart/Reload
-pm2 stop myapp
-pm2 restart myapp
-pm2 reload myapp    # Zero-downtime
-
-# Delete process
-pm2 delete myapp
-
-# Delete all
-pm2 delete all
 ```
 
 ---
 
-## 3. Ecosystem File
+## The Ecosystem Config File (Recommended)
 
-Create `ecosystem.config.js`:
+Instead of typing start options every time, put them in a config file.
+
+Create `ecosystem.config.js` in your app folder:
 
 ```javascript
 module.exports = {
   apps: [{
     name: 'myapp',
-    script: './dist/index.js',
-    instances: 'max',           // Use all CPUs
-    exec_mode: 'cluster',
-    watch: false,
-    max_memory_restart: '1G',
+    script: './app.js',         // Your entry file
+    instances: 1,               // Use 'max' to use all CPU cores
+    watch: false,               // Don't restart on file changes (use false in production)
+    max_memory_restart: '500M', // Restart if app uses more than 500MB RAM
     env: {
-      NODE_ENV: 'development'
-    },
-    env_production: {
       NODE_ENV: 'production',
       PORT: 3000
     },
-    // Logs
-    error_file: './logs/error.log',
-    out_file: './logs/out.log',
-    log_date_format: 'YYYY-MM-DD HH:mm:ss',
-    merge_logs: true,
-    // Restart behavior
+    error_file: '/var/log/pm2/myapp-error.log',
+    out_file: '/var/log/pm2/myapp-out.log',
     autorestart: true,
-    max_restarts: 10,
-    min_uptime: '10s',
-    restart_delay: 4000
+    restart_delay: 3000         // Wait 3 seconds before restarting
   }]
 };
 ```
 
-Start with ecosystem:
+Start with the config:
 ```bash
-pm2 start ecosystem.config.js --env production
+pm2 start ecosystem.config.js
 ```
 
 ---
 
-## 4. Cluster Mode
+## Auto-Start on Server Reboot
 
-```javascript
-// ecosystem.config.js
-{
-  instances: 'max',        // All CPUs
-  instances: 4,            // Specific number
-  exec_mode: 'cluster'     // Enable clustering
-}
-```
-
-Manage clusters:
-```bash
-pm2 scale myapp 4    # Scale to 4 instances
-pm2 scale myapp +2   # Add 2 instances
-pm2 scale myapp -1   # Remove 1 instance
-```
-
----
-
-## 5. Monitoring
+Do this once after your app is running:
 
 ```bash
-# Real-time dashboard
-pm2 monit
-
-# Process details
-pm2 show myapp
-pm2 describe myapp
-
-# CPU/Memory stats
-pm2 status
-
-# Environment variables
-pm2 env myapp
-```
-
----
-
-## 6. Logs
-
-```bash
-# View logs
-pm2 logs
-pm2 logs myapp
-pm2 logs myapp --lines 100
-
-# Follow logs
-pm2 logs --follow
-
-# Clear logs
-pm2 flush
-
-# Install log rotation
-pm2 install pm2-logrotate
-pm2 set pm2-logrotate:max_size 10M
-pm2 set pm2-logrotate:retain 7
-pm2 set pm2-logrotate:compress true
-```
-
----
-
-## 7. Startup Script
-
-```bash
-# Generate startup script
+# Set up PM2 to start on boot
 pm2 startup
 
-# Run the command it outputs, then save:
-pm2 save
+# Run the command it gives you (something like):
+# sudo env PATH=$PATH:/usr/bin pm2 startup systemd -u deployer --hp /home/deployer
 
-# Remove startup
-pm2 unstartup
+# Save your current apps
+pm2 save
 ```
+
+Now your apps will start automatically after every server reboot.
 
 ---
 
-## 8. Deploy Command
-
-```javascript
-// ecosystem.config.js
-module.exports = {
-  apps: [{ /* app config */ }],
-  deploy: {
-    production: {
-      user: 'deployer',
-      host: 'server-ip',
-      ref: 'origin/main',
-      repo: 'git@github.com:user/repo.git',
-      path: '/var/www/myapp',
-      'post-deploy': 'npm ci && npm run build && pm2 reload ecosystem.config.js --env production'
-    }
-  }
-};
-```
+## Common PM2 Commands
 
 ```bash
-# First time setup
-pm2 deploy production setup
+# See all apps and their status
+pm2 list
 
-# Deploy
-pm2 deploy production
+# See live logs
+pm2 logs myapp
+
+# See last 100 lines of logs
+pm2 logs myapp --lines 100
+
+# Reload app (no downtime — use this for deploys)
+pm2 reload myapp
+
+# Restart app (brief downtime)
+pm2 restart myapp
+
+# Stop app
+pm2 stop myapp
+
+# Remove app from PM2
+pm2 delete myapp
+
+# Live monitoring (CPU, memory, logs)
+pm2 monit
+
+# Save current app list
+pm2 save
+
+# Clear all logs
+pm2 flush
 ```
 
 ---
 
-## 9. Multiple Apps
+## Multiple Apps
+
+You can run multiple apps in one ecosystem file:
 
 ```javascript
 module.exports = {
   apps: [
     {
-      name: 'api',
-      script: './api/index.js',
-      instances: 2
+      name: 'frontend',
+      script: './server.js',
+      env: { PORT: 3000, NODE_ENV: 'production' }
     },
     {
-      name: 'worker',
-      script: './worker/index.js',
-      instances: 1
+      name: 'api',
+      script: './api/server.js',
+      env: { PORT: 4000, NODE_ENV: 'production' }
     }
   ]
 };
+```
+
+---
+
+## Log Rotation (Prevent Huge Log Files)
+
+Install the log rotation plugin:
+
+```bash
+pm2 install pm2-logrotate
+
+# Max log file size: 10MB
+pm2 set pm2-logrotate:max_size 10M
+
+# Keep 7 days of logs
+pm2 set pm2-logrotate:retain 7
+```
+
+---
+
+## Troubleshooting
+
+**App keeps crashing:**
+```bash
+pm2 logs myapp --lines 200
+```
+
+**App not starting after reboot:**
+```bash
+# Re-run startup setup
+pm2 startup
+# Copy and run the command it gives you
+pm2 save
+```
+
+**Port already in use:**
+```bash
+sudo lsof -i :3000
+# Kill the process using that port
+sudo kill -9 <PID>
 ```
 
 ---
@@ -211,15 +182,9 @@ module.exports = {
 
 | Task | Command |
 |------|---------|
-| Start | `pm2 start app.js` |
-| Stop | `pm2 stop app` |
-| Restart | `pm2 restart app` |
-| Zero-downtime | `pm2 reload app` |
-| Logs | `pm2 logs app` |
+| Start | `pm2 start app.js --name myapp` |
+| Reload (no downtime) | `pm2 reload myapp` |
+| Logs | `pm2 logs myapp` |
+| Status | `pm2 list` |
 | Monitor | `pm2 monit` |
-| Save | `pm2 save` |
-| Startup | `pm2 startup` |
-
----
-
-✅ PM2 is configured!
+| Save list | `pm2 save` |
